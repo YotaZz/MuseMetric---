@@ -1,0 +1,5 @@
+{
+  "name": "MuseMetric - 歌手作品全维度评分",
+  "description": "一个用于管理歌手专辑、对歌曲进行作词/作曲/编曲多维度评分，并生成深度可视化报表和排名的专业工具。",
+  "requestFramePermissions": []
+}
