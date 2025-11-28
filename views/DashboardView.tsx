@@ -47,6 +47,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ singer, onUpdateSi
       let valA: any = '';
       let valB: any = '';
 
+      // Value extraction
       switch (config.key) {
         case 'title': valA = a.title; valB = b.title; break;
         case 'album': valA = a.albumYear; valB = b.albumYear; break; // Sort by year for album context
@@ -56,14 +57,38 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ singer, onUpdateSi
         case 'total': valA = a.totalScore; valB = b.totalScore; break;
       }
 
-      if (config.key === 'total' && Math.abs(valA - valB) < 0.001) {
-          // Tie-breaker: Composition
-          return config.direction === 'asc' ? a.scores.composition - b.scores.composition : b.scores.composition - a.scores.composition;
+      // 1. Primary Sort
+      let comparison = 0;
+      const isNumeric = typeof valA === 'number';
+      
+      if (isNumeric) {
+         if (Math.abs(valA - valB) > 0.001) {
+             comparison = valA - valB;
+         }
+      } else {
+         if (valA < valB) comparison = -1;
+         else if (valA > valB) comparison = 1;
       }
 
-      if (valA < valB) return config.direction === 'asc' ? -1 : 1;
-      if (valA > valB) return config.direction === 'asc' ? 1 : -1;
-      return 0;
+      if (comparison !== 0) {
+          return config.direction === 'asc' ? comparison : -comparison;
+      }
+
+      // 2. Tie-Breaker: Composition (Only if sorting by Total)
+      if (config.key === 'total') {
+          const compDiff = a.scores.composition - b.scores.composition;
+          if (Math.abs(compDiff) > 0.001) {
+              return config.direction === 'asc' ? compDiff : -compDiff;
+          }
+      }
+
+      // 3. Final Tie-Breaker: Rank
+      // This ensures that for identical primary values (and identical composition if total), 
+      // the order is deterministic and reverses correctly.
+      // Rank 1 is "Best". Rank 100 is "Worst".
+      // Ascending (Worst first): Rank 100 should be before Rank 1. (b.rank - a.rank > 0 -> b comes first).
+      // Descending (Best first): Rank 1 should be before Rank 100. (a.rank - b.rank < 0 -> a comes first).
+      return config.direction === 'asc' ? b.rank - a.rank : a.rank - b.rank;
     });
   };
 

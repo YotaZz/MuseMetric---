@@ -86,6 +86,39 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
     };
   }, [activeSongId, allSongs, albumsWithStats]);
 
+  // Derived neighbors for the ranking preview
+  const rankingNeighbors = useMemo(() => {
+    if (!activeSongId) return [];
+    
+    // Sort all songs to determine rank
+    const sortedAllSongs = [...allSongs].sort(sortSongsAlgorithm);
+    
+    const currentIndex = sortedAllSongs.findIndex(s => s.id === activeSongId);
+    if (currentIndex === -1) return [];
+
+    const total = sortedAllSongs.length;
+    const windowSize = 5;
+    
+    // Determine window start/end logic to keep window size consistent if possible
+    let start = currentIndex - 2;
+    let end = start + windowSize;
+
+    // Adjust boundaries
+    if (start < 0) {
+        start = 0;
+        end = Math.min(total, windowSize);
+    } else if (end > total) {
+        end = total;
+        start = Math.max(0, end - windowSize);
+    }
+
+    return sortedAllSongs.slice(start, end).map((s, i) => ({
+        ...s,
+        absoluteRank: start + i + 1,
+        isCurrent: s.id === activeSongId
+    }));
+  }, [activeSongId, allSongs]);
+
   // --- Handlers ---
 
   const openAddAlbumModal = () => {
@@ -279,6 +312,9 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
   // --- Drag and Drop Logic (Index Based + Handle Restricted) ---
 
   const handleDragStart = (e: React.DragEvent, type: 'album' | 'song', index: number, albumIndex?: number, id?: string) => {
+      // STOP PROPAGATION: Crucial to prevent nested drag events (e.g. dragging a song triggers album drag)
+      e.stopPropagation();
+
       // STRICT CHECK: Only allow drag if initiated from the handle
       if (!isDragHandleActive.current) {
           e.preventDefault();
@@ -382,7 +418,13 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
           </div>
         )}
 
-        {singer.albums.map((album, albumIdx) => (
+        {singer.albums.map((album, albumIdx) => {
+          // Check if all songs have a total score > 0
+          const isAlbumCompleted = album.songs.length > 0 && album.songs.every(s => 
+              calculateSongTotal(s.scores.lyrics, s.scores.composition, s.scores.arrangement) > 0
+          );
+
+          return (
           <div
              key={album.id}
              draggable
@@ -391,7 +433,7 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
              onDragEnd={handleDragEnd}
              className={`transition-all duration-200 ${draggingId === album.id ? 'opacity-40' : 'opacity-100'} ${dragOverId === album.id ? 'translate-x-2' : ''}`}
           >
-          <Card className={`overflow-hidden mb-6 transition-shadow ${dragOverId === album.id ? 'ring-2 ring-indigo-400 shadow-lg' : ''}`}>
+          <Card className={`overflow-hidden mb-6 transition-all ${dragOverId === album.id ? 'ring-2 ring-indigo-400 shadow-lg' : ''} ${isAlbumCompleted ? '!border-emerald-500/50 shadow-sm' : ''}`}>
             <div 
               className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between transition-colors cursor-pointer"
                onClick={() => setExpandedAlbumId(expandedAlbumId === album.id ? null : album.id)}
@@ -597,7 +639,7 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
             )}
           </Card>
           </div>
-        ))}
+        )})}
       </div>
 
       {/* Side Panel: Realtime Stats - Sticky */}
@@ -649,6 +691,38 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
              )}
            </Card>
            
+           {/* Ranking Neighborhood Preview */}
+           {activeSongId && rankingNeighbors.length > 0 && (
+             <Card className="p-4 bg-white border-slate-200 shadow-lg">
+                <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-100">
+                    <h3 className="text-sm font-bold text-slate-700">实时位次预览</h3>
+                    <span className="text-xs text-slate-400">排名邻居</span>
+                </div>
+                <div className="space-y-1">
+                    {rankingNeighbors.map(song => (
+                        <div 
+                            key={song.id} 
+                            className={`flex items-center gap-2 p-2 rounded text-sm transition-all ${
+                                song.isCurrent 
+                                ? 'bg-indigo-600 text-white shadow-md scale-[1.02]' 
+                                : 'text-slate-600'
+                            }`}
+                        >
+                            <div className={`w-6 text-center font-mono text-xs ${song.isCurrent ? 'text-indigo-200' : 'text-slate-400'}`}>
+                                #{song.absoluteRank}
+                            </div>
+                            <div className="flex-1 truncate font-medium">
+                                {song.title}
+                            </div>
+                            <div className={`font-mono font-bold ${song.isCurrent ? 'text-white' : 'text-indigo-600'}`}>
+                                {song.totalScore.toFixed(2)}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+             </Card>
+           )}
+
            <div className="text-xs text-slate-400 text-center px-4">
               评分规则：如果总分相同，作曲分更高者排名靠前。
            </div>
