@@ -441,6 +441,7 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
                      </button>
                 </div>
            </div>
-    </div>
+       </div> 
+    </div> 
   );
 };
