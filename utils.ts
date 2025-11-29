@@ -97,7 +97,10 @@ export const sanitizeSingerImport = (data: any[]): Singer[] => {
           id: song.id || generateId(),
           title: song.title || 'Untitled Song',
           comment: song.comment || '',
-          scores: scores
+          scores: scores,
+          hasAudio: song.hasAudio,
+          hasLrc: song.hasLrc,
+          highlightStartTime: song.highlightStartTime
         };
       }) : []
     })) : []
@@ -130,4 +133,32 @@ export const getPresentationSongs = (singer: Singer): PresentationSong[] => {
 
     // 3. Reverse to get Ascending order (Worst -> Best) for the "Countdown" reveal
     return songsWithRank.reverse();
+};
+
+export interface LrcLine {
+    time: number; // Seconds
+    text: string;
+}
+
+export const parseLrc = (lrcContent: string): LrcLine[] => {
+    const lines = lrcContent.split('\n');
+    const regex = /^\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/;
+    const lrcData: LrcLine[] = [];
+
+    lines.forEach(line => {
+        const match = line.match(regex);
+        if (match) {
+            const minutes = parseInt(match[1], 10);
+            const seconds = parseInt(match[2], 10);
+            const milliseconds = parseInt(match[3], 10);
+            const text = match[4].trim();
+            // Convert to seconds. ms can be 2 or 3 digits
+            const time = minutes * 60 + seconds + milliseconds / (match[3].length === 3 ? 1000 : 100);
+            if (text) {
+                lrcData.push({ time, text });
+            }
+        }
+    });
+
+    return lrcData.sort((a, b) => a.time - b.time);
 };

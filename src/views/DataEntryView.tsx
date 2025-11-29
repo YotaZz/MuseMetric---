@@ -4,7 +4,7 @@ import { generateId, calculateSongTotal, enrichSingerData, sortSongsAlgorithm, f
 import { Button, Input, Card, Modal } from '../components/UI';
 import { IconPlus, IconTrash, IconMagic, IconUpload, IconEdit, IconMusic, IconEraser, IconDragHandle, IconMessage, IconSettings, IconRefresh } from '../components/Icons';
 import { generateAlbumTracklist } from '../geminiService';
-import { scanAndMatchDirectory } from '../matchingService';
+import { scanAndMatchDirectory, scanAndMatchFileList } from '../matchingService';
 import { setFileHandle, removeFileHandle } from '../db';
 
 interface DataEntryViewProps {
@@ -41,6 +41,9 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
   
   // Local File Matching State
   const [isMatching, setIsMatching] = useState(false);
+  
+  // Fallback Input Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Album Form State (Used for both Add and Edit)
   const [albumFormTitle, setAlbumFormTitle] = useState('');
@@ -130,15 +133,7 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
 
   // --- Handlers ---
 
-  const handleConnectLocalFolder = async () => {
-    try {
-        const dirHandle = await (window as any).showDirectoryPicker();
-        setIsMatching(true);
-        
-        // Flatten songs for matching
-        const flatSongs = singer.albums.flatMap(a => a.songs);
-        const { updatedSongs, matchedAudioCount, matchedLrcCount } = await scanAndMatchDirectory(flatSongs, dirHandle);
-        
+  const processMatchingResults = (updatedSongs: Song[], matchedAudioCount: number, matchedLrcCount: number) => {
         // Reconstruct album structure
         const updatedAlbums = singer.albums.map(album => ({
             ...album,
@@ -149,19 +144,54 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
 
         onUpdateSinger({ ...singer, albums: updatedAlbums });
         alert(`匹配完成！\n成功关联音频: ${matchedAudioCount} 首\n成功关联歌词: ${matchedLrcCount} 首`);
-    } catch (err) {
-        if ((err as Error).name !== 'AbortError') {
-            console.error('Folder access error:', err);
-            alert('无法访问文件夹，请重试或检查浏览器权限。');
+  };
+
+  const handleConnectLocalFolder = async () => {
+    try {
+        const dirHandle = await (window as any).showDirectoryPicker();
+        setIsMatching(true);
+        
+        // Flatten songs for matching
+        const flatSongs = singer.albums.flatMap(a => a.songs);
+        const { updatedSongs, matchedAudioCount, matchedLrcCount } = await scanAndMatchDirectory(flatSongs, dirHandle);
+        
+        processMatchingResults(updatedSongs, matchedAudioCount, matchedLrcCount);
+    } catch (err: any) {
+        if (err.name === 'AbortError') return;
+
+        // SecurityError or generally failing in iframe
+        console.warn("showDirectoryPicker failed, falling back to input", err);
+        if (fileInputRef.current) {
+            fileInputRef.current.click();
+        } else {
+             alert('无法访问文件夹选择器，且回退模式不可用。');
         }
     } finally {
         setIsMatching(false);
     }
   };
 
+  const handleFallbackFolderSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!e.target.files || e.target.files.length === 0) return;
+      setIsMatching(true);
+      try {
+          const flatSongs = singer.albums.flatMap(a => a.songs);
+          const { updatedSongs, matchedAudioCount, matchedLrcCount } = await scanAndMatchFileList(flatSongs, e.target.files);
+          processMatchingResults(updatedSongs, matchedAudioCount, matchedLrcCount);
+      } catch (err) {
+          console.error("Fallback matching error", err);
+          alert("文件处理出错");
+      } finally {
+          setIsMatching(false);
+          // Reset value to allow selecting same folder again
+          e.target.value = '';
+      }
+  };
+
   const handleSelectFileManually = async (type: 'audio' | 'lrc') => {
       if (!songSettingsTarget) return;
       try {
+          // Try newer API first
           const [fileHandle] = await (window as any).showOpenFilePicker({
               types: type === 'audio' 
                 ? [{ description: 'Audio Files', accept: { 'audio/*': ['.mp3', '.flac', '.wav', '.m4a'] } }] 
@@ -169,63 +199,48 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
           });
 
           await setFileHandle(songSettingsTarget.song.id, type, fileHandle);
-          
-          // Update State
-          const updatedAlbums = singer.albums.map(a => {
-              if (a.id !== songSettingsTarget.albumId) return a;
-              return {
-                  ...a,
-                  songs: a.songs.map(s => {
-                      if (s.id !== songSettingsTarget.song.id) return s;
-                      return {
-                          ...s,
-                          [type === 'audio' ? 'hasAudio' : 'hasLrc']: true
-                      };
-                  })
-              };
-          });
-          onUpdateSinger({ ...singer, albums: updatedAlbums });
-          
-          // Update local target for immediate UI reflection in modal
-          setSongSettingsTarget({
-              ...songSettingsTarget,
-              song: {
-                  ...songSettingsTarget.song,
-                  [type === 'audio' ? 'hasAudio' : 'hasLrc']: true
-              }
-          });
+          updateSongFileState(type, true);
 
-      } catch (err) {
-           // Ignore abort
+      } catch (err: any) {
+           if (err.name === 'AbortError') return;
+           // If API fails, we could potentially have a fallback single file input, 
+           // but for now keeping it simple or relying on the folder scan fallback.
+           alert('手动文件选择仅支持现代浏览器或非沙盒环境。请尝试使用上方的“关联本地文件夹”功能。');
       }
   };
   
+  const updateSongFileState = (type: 'audio' | 'lrc', hasFile: boolean) => {
+      if (!songSettingsTarget) return;
+      
+      const updatedAlbums = singer.albums.map(a => {
+            if (a.id !== songSettingsTarget.albumId) return a;
+            return {
+                ...a,
+                songs: a.songs.map(s => {
+                    if (s.id !== songSettingsTarget.song.id) return s;
+                    return {
+                        ...s,
+                        [type === 'audio' ? 'hasAudio' : 'hasLrc']: hasFile
+                    };
+                })
+            };
+        });
+        onUpdateSinger({ ...singer, albums: updatedAlbums });
+        
+        // Update local target for immediate UI reflection in modal
+        setSongSettingsTarget({
+            ...songSettingsTarget,
+            song: {
+                ...songSettingsTarget.song,
+                [type === 'audio' ? 'hasAudio' : 'hasLrc']: hasFile
+            }
+        });
+  };
+
   const handleRemoveFileAssociation = async (type: 'audio' | 'lrc') => {
       if (!songSettingsTarget) return;
       await removeFileHandle(songSettingsTarget.song.id, type);
-
-      const updatedAlbums = singer.albums.map(a => {
-          if (a.id !== songSettingsTarget.albumId) return a;
-          return {
-              ...a,
-              songs: a.songs.map(s => {
-                  if (s.id !== songSettingsTarget.song.id) return s;
-                  return {
-                      ...s,
-                      [type === 'audio' ? 'hasAudio' : 'hasLrc']: false
-                  };
-              })
-          };
-      });
-      onUpdateSinger({ ...singer, albums: updatedAlbums });
-      
-      setSongSettingsTarget({
-          ...songSettingsTarget,
-          song: {
-              ...songSettingsTarget.song,
-              [type === 'audio' ? 'hasAudio' : 'hasLrc']: false
-          }
-      });
+      updateSongFileState(type, false);
   };
 
   const handleUpdateHighlightTime = (time: string) => {
@@ -528,6 +543,16 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 h-full">
+      {/* Hidden Fallback Input */}
+      <input 
+         type="file" 
+         ref={fileInputRef} 
+         onChange={handleFallbackFolderSelect} 
+         style={{display: 'none'}} 
+         multiple 
+         {...({webkitdirectory: "", directory: ""} as any)} 
+      />
+
       {/* Main Content: Album List */}
       <div className="flex-1 space-y-6 overflow-y-auto pb-20">
         <div className="flex justify-between items-center">

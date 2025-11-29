@@ -3,7 +3,7 @@ import { Singer } from '../types';
 import { getPresentationSongs, PresentationSong, parseLrc, LrcLine } from '../utils';
 import { IconPlay, IconPause, IconRefresh, IconX, IconMusic } from '../components/Icons';
 import { Button } from '../components/UI';
-import { getFileHandle, verifyPermission } from '../db';
+import { getFileHandle, verifyPermission, StoredFile } from '../db';
 
 interface RankingPresentationViewProps {
   singer: Singer;
@@ -20,7 +20,7 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
   const [elapsedTime, setElapsedTime] = useState(0); // For timer-based fallback
   const [currentTime, setCurrentTime] = useState(0); // Actual Audio Time
   const [permissionNeeded, setPermissionNeeded] = useState(false);
-  const [permissionHandle, setPermissionHandle] = useState<FileSystemFileHandle | null>(null);
+  const [permissionHandle, setPermissionHandle] = useState<StoredFile | null>(null);
   const [lrcLines, setLrcLines] = useState<LrcLine[]>([]);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -33,6 +33,14 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
   }, [singer]);
 
   const currentSong = playlist[currentSongIndex];
+
+  // Helper to extract file content from handle or file object
+  const resolveFileContent = async (handle: StoredFile): Promise<File> => {
+      if (handle instanceof File) {
+          return handle;
+      }
+      return await handle.getFile();
+  };
 
   // Load Audio and LRC
   useEffect(() => {
@@ -72,7 +80,7 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
                 return;
             }
 
-            const file = await handle.getFile();
+            const file = await resolveFileContent(handle);
             const url = URL.createObjectURL(file);
             
             if (audioRef.current) {
@@ -82,7 +90,7 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
                 setCurrentTime(start); // Init UI immediately
                 
                 if (isPlaying) {
-                    audioRef.current.play().catch(e => console.log("Autoplay prevented", e));
+                    audioRef.current.play().catch(e => console.log("Autoplay prevented", e.message));
                 }
             }
 
@@ -90,7 +98,7 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
             if (currentSong.hasLrc) {
                 const lrcHandle = await getFileHandle(currentSong.id, 'lrc');
                 if (lrcHandle && await verifyPermission(lrcHandle, false)) {
-                    const lrcFile = await lrcHandle.getFile();
+                    const lrcFile = await resolveFileContent(lrcHandle);
                     const text = await lrcFile.text();
                     if (isMounted) setLrcLines(parseLrc(text));
                 }
@@ -189,16 +197,9 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
           setIsPlaying(true); // Auto start
           
           // Reload current song media logic
-           // Force re-execution of loadMedia is tricky without refactoring.
-           // Easiest is to toggle song index or reload component, but that's bad UX.
-           // Actually, since we updated verifyPermission result, just re-calling logic is good.
-           // But useEffect deps won't trigger. 
-           // We can manually trigger the load logic or just reload the page/view?
-           // Let's reload the view logic by toggling a key or similar?
-           // Or just duplicate the load logic here.
            if (currentSong) {
                const handle = permissionHandle;
-               const file = await handle.getFile();
+               const file = await resolveFileContent(handle);
                const url = URL.createObjectURL(file);
                if (audioRef.current) {
                     audioRef.current.src = url;
@@ -209,7 +210,7 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
                if(currentSong.hasLrc) {
                    const lrcHandle = await getFileHandle(currentSong.id, 'lrc');
                    if (lrcHandle && await verifyPermission(lrcHandle, false)) {
-                       const lrcFile = await lrcHandle.getFile();
+                       const lrcFile = await resolveFileContent(lrcHandle);
                        const text = await lrcFile.text();
                        setLrcLines(parseLrc(text));
                    }
@@ -247,7 +248,7 @@ export const RankingPresentationView: React.FC<RankingPresentationViewProps> = (
          ref={audioRef} 
          onTimeUpdate={onAudioTimeUpdate}
          onEnded={handleNext}
-         onError={(e) => console.log("Audio Error", e)}
+         onError={(e) => console.log("Audio Error Occurred", (e.currentTarget as HTMLAudioElement).error?.message || 'Unknown error')}
        />
 
        {/* Permission Overlay */}

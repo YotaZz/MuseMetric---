@@ -9,6 +9,9 @@ export interface Song {
   title: string;
   comment?: string; // Max 20 chars
   scores: Score;
+  hasAudio?: boolean; // New: Local audio file linked
+  hasLrc?: boolean;   // New: Local lrc file linked
+  highlightStartTime?: number; // New: Start time for playback (seconds)
 }
 
 export interface Album {
