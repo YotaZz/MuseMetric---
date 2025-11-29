@@ -25,6 +25,7 @@ const App: React.FC = () => {
   // Global Settings State
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [presentationDuration, setPresentationDuration] = useState(15); // Seconds
+  const [rotationSpeed, setRotationSpeed] = useState(20); // Seconds per rotation
 
   // Load from local storage
   useEffect(() => {
@@ -122,6 +123,7 @@ const App: React.FC = () => {
         <RankingPresentationView 
             singer={currentSinger} 
             durationMs={presentationDuration * 1000}
+            rotationSpeed={rotationSpeed}
             onExit={() => setCurrentView('dashboard')} 
         />
       );
@@ -315,9 +317,9 @@ const App: React.FC = () => {
 
       {/* Settings Modal */}
       <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="全局设置">
-         <div className="space-y-4">
+         <div className="space-y-6">
             <div>
-               <label className="block text-sm font-medium text-slate-700 mb-1">播放模式：每首歌曲展示时长 (秒)</label>
+               <label className="block text-sm font-medium text-slate-700 mb-1">自动播放：每首歌曲展示时长 (秒)</label>
                <Input 
                    type="number" 
                    min="3" 
@@ -325,8 +327,21 @@ const App: React.FC = () => {
                    value={presentationDuration} 
                    onChange={(e) => setPresentationDuration(parseInt(e.target.value) || 15)}
                />
-               <p className="text-xs text-slate-500 mt-1">建议设置在 10 ~ 30 秒之间。</p>
+               <p className="text-xs text-slate-500 mt-1">仅在未关联音频文件时生效。建议设置在 10 ~ 30 秒之间。</p>
             </div>
+
+            <div>
+               <label className="block text-sm font-medium text-slate-700 mb-1">视觉效果：唱片旋转速度 (秒/圈)</label>
+               <Input 
+                   type="number" 
+                   min="1" 
+                   max="120" 
+                   value={rotationSpeed} 
+                   onChange={(e) => setRotationSpeed(Math.max(1, parseInt(e.target.value) || 20))}
+               />
+               <p className="text-xs text-slate-500 mt-1">数字越小转得越快，数字越大转得越慢。默认 20 秒。</p>
+            </div>
+
             <div className="flex justify-end gap-2 mt-4">
                 <Button onClick={() => setIsSettingsModalOpen(false)}>完成</Button>
             </div>
