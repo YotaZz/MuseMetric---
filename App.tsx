@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ViewMode, Singer } from './types';
-import { generateId } from './utils';
+import { generateId, sanitizeSingerData } from './utils';
 import { DataEntryView } from './views/DataEntryView';
 import { DashboardView } from './views/DashboardView';
 import { IconMusic, IconChart, IconPlus, IconDownload, IconUpload, IconChevronLeft, IconChevronRight, IconEdit } from './components/Icons';
@@ -27,9 +27,10 @@ const App: React.FC = () => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        setSingers(parsed);
-        if (parsed.length > 0) {
-          setCurrentSingerId(parsed[0].id);
+        const sanitized = sanitizeSingerData(parsed);
+        setSingers(sanitized);
+        if (sanitized.length > 0) {
+          setCurrentSingerId(sanitized[0].id);
         }
       } catch (e) {
         console.error("Failed to load data", e);
@@ -91,12 +92,17 @@ const App: React.FC = () => {
       reader.onload = (event) => {
           try {
               const parsed = JSON.parse(event.target?.result as string);
-              if(Array.isArray(parsed)){
-                  setSingers(parsed);
-                  if(parsed.length > 0) setCurrentSingerId(parsed[0].id);
-                  alert('数据导入成功！');
+              const sanitized = sanitizeSingerData(parsed);
+              
+              if(sanitized.length > 0 || Array.isArray(parsed)){
+                  setSingers(sanitized);
+                  if(sanitized.length > 0) setCurrentSingerId(sanitized[0].id);
+                  alert(`成功导入 ${sanitized.length} 位歌手的数据！`);
+              } else {
+                  alert('导入失败：数据格式不正确');
               }
           } catch(err) {
+              console.error(err);
               alert('文件格式错误或数据损坏');
           }
       };

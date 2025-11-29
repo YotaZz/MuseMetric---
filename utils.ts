@@ -22,10 +22,15 @@ export const enrichSingerData = (singer: Singer) => {
     let sumLyrics = 0, sumComp = 0, sumArr = 0, sumTotal = 0;
 
     album.songs.forEach(song => {
-      sumLyrics += song.scores.lyrics;
-      sumComp += song.scores.composition;
-      sumArr += song.scores.arrangement;
-      sumTotal += calculateSongTotal(song.scores.lyrics, song.scores.composition, song.scores.arrangement);
+      // Ensure scores exist to prevent crashes
+      const lyrics = song.scores?.lyrics || 0;
+      const composition = song.scores?.composition || 0;
+      const arrangement = song.scores?.arrangement || 0;
+      
+      sumLyrics += lyrics;
+      sumComp += composition;
+      sumArr += arrangement;
+      sumTotal += calculateSongTotal(lyrics, composition, arrangement);
     });
 
     return {
@@ -40,7 +45,9 @@ export const enrichSingerData = (singer: Singer) => {
   const allSongs: SongWithStats[] = singer.albums.flatMap(album => 
     album.songs.map(song => ({
       ...song,
-      totalScore: calculateSongTotal(song.scores.lyrics, song.scores.composition, song.scores.arrangement),
+      // Ensure scores exist
+      scores: song.scores || { lyrics: 0, composition: 0, arrangement: 0 },
+      totalScore: calculateSongTotal(song.scores?.lyrics || 0, song.scores?.composition || 0, song.scores?.arrangement || 0),
       albumId: album.id,
       albumName: album.title,
       albumYear: album.year,
@@ -58,4 +65,28 @@ export const fileToBase64 = (file: File): Promise<string> => {
     reader.onload = () => resolve(reader.result as string);
     reader.onerror = error => reject(error);
   });
+};
+
+export const sanitizeSingerData = (data: any[]): Singer[] => {
+  if (!Array.isArray(data)) return [];
+
+  return data.map((singer: any) => ({
+    id: String(singer.id || generateId()),
+    name: String(singer.name || '未命名歌手'),
+    albums: Array.isArray(singer.albums) ? singer.albums.map((album: any) => ({
+      id: String(album.id || generateId()),
+      title: String(album.title || '未命名专辑'),
+      year: String(album.year || ''),
+      coverUrl: album.coverUrl,
+      songs: Array.isArray(album.songs) ? album.songs.map((song: any) => ({
+        id: String(song.id || generateId()),
+        title: String(song.title || '未命名歌曲'),
+        scores: {
+          lyrics: Number(song.scores?.lyrics || 0),
+          composition: Number(song.scores?.composition || 0),
+          arrangement: Number(song.scores?.arrangement || 0),
+        }
+      })) : []
+    })) : []
+  }));
 };
