@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Singer, SongWithStats } from '../types';
 import { enrichSingerData, sortSongsAlgorithm, calculateSongTotal } from '../utils';
 import { Card, Modal, Input } from '../components/UI';
@@ -19,6 +19,41 @@ interface SortConfig {
 interface SongWithRank extends SongWithStats {
     rank: number;
 }
+
+const BufferedScoreInput = ({ 
+    value, 
+    onCommit, 
+    className 
+}: { 
+    value: number; 
+    onCommit: (val: string) => void; 
+    className?: string 
+}) => {
+    const [localValue, setLocalValue] = useState(value.toString());
+
+    useEffect(() => {
+        setLocalValue(value.toString());
+    }, [value]);
+
+    const handleCommit = () => {
+        onCommit(localValue);
+    };
+
+    return (
+        <Input 
+            type="number" step="0.1" min="0" max="10" 
+            value={localValue} 
+            onChange={(e) => setLocalValue(e.target.value)}
+            onBlur={handleCommit}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                    e.currentTarget.blur();
+                }
+            }}
+            className={className}
+        />
+    );
+};
 
 export const DashboardView: React.FC<DashboardViewProps> = ({ singer, onUpdateSinger }) => {
   const { albumsWithStats, allSongs } = useMemo(() => enrichSingerData(singer), [singer]);
@@ -180,26 +215,23 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ singer, onUpdateSi
                         </td>
                         {showAlbum && <td className="px-4 py-3 text-slate-500 text-xs align-middle whitespace-nowrap">{song.albumName} <span className="opacity-50">({song.albumYear})</span></td>}
                         <td className="px-2 py-3 align-middle">
-                            <Input 
-                                type="number" step="0.1" min="0" max="10" 
+                            <BufferedScoreInput 
                                 value={song.scores.lyrics} 
-                                onChange={(e) => handleUpdateScore(song.albumId, song.id, 'lyrics', e.target.value)}
+                                onCommit={(val) => handleUpdateScore(song.albumId, song.id, 'lyrics', val)}
                                 className="text-center h-8 bg-transparent hover:bg-white focus:bg-white border-transparent hover:border-slate-200 focus:border-indigo-500 text-slate-600 !px-1"
                             />
                         </td>
                         <td className="px-2 py-3 align-middle">
-                            <Input 
-                                type="number" step="0.1" min="0" max="10" 
+                            <BufferedScoreInput 
                                 value={song.scores.composition} 
-                                onChange={(e) => handleUpdateScore(song.albumId, song.id, 'composition', e.target.value)}
+                                onCommit={(val) => handleUpdateScore(song.albumId, song.id, 'composition', val)}
                                 className="text-center h-8 bg-transparent hover:bg-white focus:bg-white border-transparent hover:border-slate-200 focus:border-indigo-500 text-slate-600 !px-1"
                             />
                         </td>
                         <td className="px-2 py-3 align-middle">
-                            <Input 
-                                type="number" step="0.1" min="0" max="10" 
+                            <BufferedScoreInput 
                                 value={song.scores.arrangement} 
-                                onChange={(e) => handleUpdateScore(song.albumId, song.id, 'arrangement', e.target.value)}
+                                onCommit={(val) => handleUpdateScore(song.albumId, song.id, 'arrangement', val)}
                                 className="text-center h-8 bg-transparent hover:bg-white focus:bg-white border-transparent hover:border-slate-200 focus:border-indigo-500 text-slate-600 !px-1"
                             />
                         </td>
@@ -306,7 +338,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ singer, onUpdateSi
       {activeTab === 'songs' && (
           <Card className="overflow-hidden">
              <div className="p-4 bg-yellow-50 text-yellow-700 text-xs flex justify-between items-center">
-                <span>提示：点击表头可进行多维度排序，点击分数单元格可直接修改。</span>
+                <span>提示：点击表头可进行多维度排序，点击分数单元格可直接修改（修改后按回车或点击空白处生效）。</span>
              </div>
              <SongTable songs={sortedSongs} />
           </Card>

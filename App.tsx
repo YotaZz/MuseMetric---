@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { ViewMode, Singer } from './types';
-import { generateId, sanitizeSingerData } from './utils';
+import { generateId, sanitizeSingerImport } from './utils';
 import { DataEntryView } from './views/DataEntryView';
 import { DashboardView } from './views/DashboardView';
-import { IconMusic, IconChart, IconPlus, IconDownload, IconUpload, IconChevronLeft, IconChevronRight, IconEdit } from './components/Icons';
+import { RankingPresentationView } from './views/RankingPresentationView';
+import { IconMusic, IconChart, IconPlus, IconDownload, IconUpload, IconChevronLeft, IconChevronRight, IconEdit, IconVideo, IconSettings } from './components/Icons';
 import { Button, Modal, Input } from './components/UI';
 
 const STORAGE_KEY = 'musemetric_data_v1';
@@ -21,16 +22,21 @@ const App: React.FC = () => {
   const [renamingSingerId, setRenamingSingerId] = useState<string | null>(null);
   const [renameSingerName, setRenameSingerName] = useState('');
 
+  // Global Settings State
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [presentationDuration, setPresentationDuration] = useState(15); // Seconds
+
   // Load from local storage
   useEffect(() => {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        const sanitized = sanitizeSingerData(parsed);
-        setSingers(sanitized);
-        if (sanitized.length > 0) {
-          setCurrentSingerId(sanitized[0].id);
+        // Apply Sanitization on Load to ensure data integrity
+        const sanitizedData = sanitizeSingerImport(parsed);
+        setSingers(sanitizedData);
+        if (sanitizedData.length > 0) {
+          setCurrentSingerId(sanitizedData[0].id);
         }
       } catch (e) {
         console.error("Failed to load data", e);
@@ -92,17 +98,14 @@ const App: React.FC = () => {
       reader.onload = (event) => {
           try {
               const parsed = JSON.parse(event.target?.result as string);
-              const sanitized = sanitizeSingerData(parsed);
-              
-              if(sanitized.length > 0 || Array.isArray(parsed)){
+              if(Array.isArray(parsed)){
+                  // Use robust sanitization
+                  const sanitized = sanitizeSingerImport(parsed);
                   setSingers(sanitized);
                   if(sanitized.length > 0) setCurrentSingerId(sanitized[0].id);
-                  alert(`成功导入 ${sanitized.length} 位歌手的数据！`);
-              } else {
-                  alert('导入失败：数据格式不正确');
+                  alert('数据导入成功！');
               }
           } catch(err) {
-              console.error(err);
               alert('文件格式错误或数据损坏');
           }
       };
@@ -112,6 +115,17 @@ const App: React.FC = () => {
   };
 
   const currentSinger = singers.find(s => s.id === currentSingerId);
+
+  // Render Presentation View directly if in presentation mode
+  if (currentView === 'presentation' && currentSinger) {
+      return (
+        <RankingPresentationView 
+            singer={currentSinger} 
+            durationMs={presentationDuration * 1000}
+            onExit={() => setCurrentView('dashboard')} 
+        />
+      );
+  }
 
   return (
     <div className="flex h-screen bg-slate-50 overflow-hidden">
@@ -165,6 +179,10 @@ const App: React.FC = () => {
 
         {/* Bottom Actions */}
         <div className="p-4 border-t border-slate-800 space-y-2">
+            <button onClick={() => setIsSettingsModalOpen(true)} className="flex items-center gap-2 text-sm hover:text-white w-full" title="全局设置">
+                <IconSettings className="w-4 h-4"/> 
+                全局设置
+            </button>
             <label className="flex items-center gap-2 text-sm hover:text-white cursor-pointer" title="导入备份">
                 <IconUpload className="w-4 h-4"/> 
                 导入备份
@@ -209,19 +227,33 @@ const App: React.FC = () => {
           </div>
           
           {/* View Switcher */}
-          <div className="flex bg-slate-100 p-1 rounded-lg">
-            <button
-              onClick={() => setCurrentView('entry')}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${currentView === 'entry' ? 'bg-white shadow text-indigo-600' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <IconMusic className="w-4 h-4" /> <span className="hidden sm:inline">数据录入</span>
-            </button>
-            <button
-              onClick={() => setCurrentView('dashboard')}
-              className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${currentView === 'dashboard' ? 'bg-white shadow text-indigo-600' : 'text-slate-600 hover:text-slate-900'}`}
-            >
-              <IconChart className="w-4 h-4" /> <span className="hidden sm:inline">可视化看板</span>
-            </button>
+          <div className="flex items-center gap-3">
+             {currentSinger && (
+                <Button 
+                    onClick={() => setCurrentView('presentation')}
+                    variant="primary"
+                    className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-none shadow-md hover:shadow-lg hover:scale-105 transition-all"
+                >
+                    <IconVideo className="w-4 h-4" /> 进入播放模式
+                </Button>
+             )}
+             
+             <div className="h-6 w-px bg-slate-300 mx-2"></div>
+
+             <div className="flex bg-slate-100 p-1 rounded-lg">
+                <button
+                onClick={() => setCurrentView('entry')}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${currentView === 'entry' ? 'bg-white shadow text-indigo-600' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                <IconMusic className="w-4 h-4" /> <span className="hidden sm:inline">数据录入</span>
+                </button>
+                <button
+                onClick={() => setCurrentView('dashboard')}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all ${currentView === 'dashboard' ? 'bg-white shadow text-indigo-600' : 'text-slate-600 hover:text-slate-900'}`}
+                >
+                <IconChart className="w-4 h-4" /> <span className="hidden sm:inline">可视化看板</span>
+                </button>
+             </div>
           </div>
         </header>
 
@@ -277,6 +309,26 @@ const App: React.FC = () => {
             <div className="flex justify-end gap-2">
                 <Button variant="ghost" onClick={() => setRenameSingerModalOpen(false)}>取消</Button>
                 <Button onClick={handleRenameSinger}>保存</Button>
+            </div>
+         </div>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="全局设置">
+         <div className="space-y-4">
+            <div>
+               <label className="block text-sm font-medium text-slate-700 mb-1">播放模式：每首歌曲展示时长 (秒)</label>
+               <Input 
+                   type="number" 
+                   min="3" 
+                   max="60" 
+                   value={presentationDuration} 
+                   onChange={(e) => setPresentationDuration(parseInt(e.target.value) || 15)}
+               />
+               <p className="text-xs text-slate-500 mt-1">建议设置在 10 ~ 30 秒之间。</p>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+                <Button onClick={() => setIsSettingsModalOpen(false)}>完成</Button>
             </div>
          </div>
       </Modal>

@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useRef } from 'react';
 import { Singer, Album, Song, SongWithStats } from '../types';
 import { generateId, calculateSongTotal, enrichSingerData, sortSongsAlgorithm, fileToBase64 } from '../utils';
 import { Button, Input, Card, Modal } from '../components/UI';
-import { IconPlus, IconTrash, IconMagic, IconUpload, IconEdit, IconMusic, IconEraser, IconDragHandle } from '../components/Icons';
+import { IconPlus, IconTrash, IconMagic, IconUpload, IconEdit, IconMusic, IconEraser, IconDragHandle, IconMessage } from '../components/Icons';
 import { generateAlbumTracklist } from '../geminiService';
 
 interface DataEntryViewProps {
@@ -41,6 +41,7 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
 
   // Active Song for Realtime Feedback
   const [activeSongId, setActiveSongId] = useState<string | null>(null);
+  const [previewDimension, setPreviewDimension] = useState<'lyrics' | 'composition' | 'arrangement'>('lyrics');
 
   // DnD State
   const dragItem = useRef<DragItem | null>(null);
@@ -519,9 +520,10 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
                     <tr className="text-slate-500 border-b border-slate-100">
                       <th className="w-8"></th>
                       <th className="text-left py-2 pl-2">歌名</th>
-                      <th className="w-20 py-2">作词</th>
-                      <th className="w-20 py-2">作曲</th>
-                      <th className="w-20 py-2">编曲</th>
+                      <th className="text-left py-2 w-48">简评 (20字)</th>
+                      <th className="w-16 py-2 text-center">作词</th>
+                      <th className="w-16 py-2 text-center">作曲</th>
+                      <th className="w-16 py-2 text-center">编曲</th>
                       <th className="w-16 py-2 text-right pr-2">总分</th>
                       <th className="w-16">操作</th>
                     </tr>
@@ -566,6 +568,27 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
                                   onUpdateSinger({...singer, albums: newAlbums});
                                 }} 
                              />
+                          </td>
+                          {/* Comment Input */}
+                          <td className="py-2 pr-2">
+                             <div className="relative group/input">
+                                <input 
+                                    className="bg-transparent border-b border-transparent hover:border-slate-300 focus:border-indigo-400 focus:ring-0 w-full text-slate-500 text-xs py-1 transition-colors" 
+                                    placeholder="添加简评..."
+                                    maxLength={20}
+                                    value={song.comment || ''}
+                                    onChange={(e) => {
+                                        const newComment = e.target.value;
+                                        const newAlbums = singer.albums.map(a => 
+                                            a.id === album.id ? {...a, songs: a.songs.map(s => s.id === song.id ? {...s, comment: newComment} : s)} : a
+                                        );
+                                        onUpdateSinger({...singer, albums: newAlbums});
+                                    }}
+                                />
+                                {song.comment && (
+                                    <IconMessage className="w-3 h-3 absolute right-0 top-1.5 text-indigo-300 opacity-50 pointer-events-none" />
+                                )}
+                             </div>
                           </td>
                           <td className="py-2 px-1">
                             <Input 
@@ -619,7 +642,7 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
                     })}
                     {/* Add Song Button Row */}
                      <tr>
-                        <td colSpan={7} className="py-3 text-center">
+                        <td colSpan={8} className="py-3 text-center">
                             <button 
                                 type="button"
                                 onClick={() => {
@@ -696,7 +719,15 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
              <Card className="p-4 bg-white border-slate-200 shadow-lg">
                 <div className="flex justify-between items-center mb-3 pb-2 border-b border-slate-100">
                     <h3 className="text-sm font-bold text-slate-700">实时位次预览</h3>
-                    <span className="text-xs text-slate-400">排名邻居</span>
+                    <select
+                        className="text-xs border-none bg-slate-100 rounded px-2 py-1 text-slate-600 focus:ring-0 cursor-pointer hover:bg-slate-200 transition-colors"
+                        value={previewDimension}
+                        onChange={(e) => setPreviewDimension(e.target.value as any)}
+                    >
+                        <option value="lyrics">作词</option>
+                        <option value="composition">作曲</option>
+                        <option value="arrangement">编曲</option>
+                    </select>
                 </div>
                 <div className="space-y-1">
                     {rankingNeighbors.map(song => (
@@ -714,7 +745,10 @@ export const DataEntryView: React.FC<DataEntryViewProps> = ({ singer, onUpdateSi
                             <div className="flex-1 truncate font-medium">
                                 {song.title}
                             </div>
-                            <div className={`font-mono font-bold ${song.isCurrent ? 'text-white' : 'text-indigo-600'}`}>
+                            <div className={`w-12 text-right font-mono text-xs opacity-75 border-r border-white/20 pr-2 mr-1`}>
+                                {song.scores[previewDimension].toFixed(1)}
+                            </div>
+                            <div className={`w-12 text-right font-mono font-bold ${song.isCurrent ? 'text-white' : 'text-indigo-600'}`}>
                                 {song.totalScore.toFixed(2)}
                             </div>
                         </div>

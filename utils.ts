@@ -22,15 +22,10 @@ export const enrichSingerData = (singer: Singer) => {
     let sumLyrics = 0, sumComp = 0, sumArr = 0, sumTotal = 0;
 
     album.songs.forEach(song => {
-      // Ensure scores exist to prevent crashes
-      const lyrics = song.scores?.lyrics || 0;
-      const composition = song.scores?.composition || 0;
-      const arrangement = song.scores?.arrangement || 0;
-      
-      sumLyrics += lyrics;
-      sumComp += composition;
-      sumArr += arrangement;
-      sumTotal += calculateSongTotal(lyrics, composition, arrangement);
+      sumLyrics += song.scores.lyrics;
+      sumComp += song.scores.composition;
+      sumArr += song.scores.arrangement;
+      sumTotal += calculateSongTotal(song.scores.lyrics, song.scores.composition, song.scores.arrangement);
     });
 
     return {
@@ -45,9 +40,7 @@ export const enrichSingerData = (singer: Singer) => {
   const allSongs: SongWithStats[] = singer.albums.flatMap(album => 
     album.songs.map(song => ({
       ...song,
-      // Ensure scores exist
-      scores: song.scores || { lyrics: 0, composition: 0, arrangement: 0 },
-      totalScore: calculateSongTotal(song.scores?.lyrics || 0, song.scores?.composition || 0, song.scores?.arrangement || 0),
+      totalScore: calculateSongTotal(song.scores.lyrics, song.scores.composition, song.scores.arrangement),
       albumId: album.id,
       albumName: album.title,
       albumYear: album.year,
@@ -67,26 +60,74 @@ export const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-export const sanitizeSingerData = (data: any[]): Singer[] => {
-  if (!Array.isArray(data)) return [];
+// --- New Robust Data & Presentation Utilities ---
 
+/**
+ * Ensures imported JSON data adheres to strict structure, providing defaults for missing fields
+ * and handling case-sensitivity or pluralization issues.
+ */
+export const sanitizeSingerImport = (data: any[]): Singer[] => {
+  if (!Array.isArray(data)) return [];
+  
   return data.map((singer: any) => ({
-    id: String(singer.id || generateId()),
-    name: String(singer.name || '未命名歌手'),
+    id: singer.id || generateId(),
+    name: singer.name || 'Unknown Singer',
     albums: Array.isArray(singer.albums) ? singer.albums.map((album: any) => ({
-      id: String(album.id || generateId()),
-      title: String(album.title || '未命名专辑'),
-      year: String(album.year || ''),
+      id: album.id || generateId(),
+      title: album.title || 'Untitled Album',
+      year: album.year || 'Unknown Year',
       coverUrl: album.coverUrl,
-      songs: Array.isArray(album.songs) ? album.songs.map((song: any) => ({
-        id: String(song.id || generateId()),
-        title: String(song.title || '未命名歌曲'),
-        scores: {
-          lyrics: Number(song.scores?.lyrics || 0),
-          composition: Number(song.scores?.composition || 0),
-          arrangement: Number(song.scores?.arrangement || 0),
-        }
-      })) : []
+      songs: Array.isArray(album.songs) ? album.songs.map((song: any) => {
+        // Compatibility: handle 'score' vs 'scores'
+        const rawScores = song.scores || song.score || {};
+        
+        // Compatibility: handle Case Sensitivity (lyrics vs Lyrics) & Parsing
+        const parseScore = (val: any) => {
+            const num = parseFloat(val);
+            return isNaN(num) ? 0 : num;
+        };
+
+        const scores = {
+          lyrics: parseScore(rawScores.lyrics ?? rawScores.Lyrics),
+          composition: parseScore(rawScores.composition ?? rawScores.Composition),
+          arrangement: parseScore(rawScores.arrangement ?? rawScores.Arrangement),
+        };
+
+        return {
+          id: song.id || generateId(),
+          title: song.title || 'Untitled Song',
+          comment: song.comment || '',
+          scores: scores
+        };
+      }) : []
     })) : []
   }));
+};
+
+export interface PresentationSong extends SongWithStats {
+    rank: number;
+}
+
+/**
+ * Prepares songs for video presentation:
+ * 1. Calculates all stats.
+ * 2. Assigns ranks based on Descending Score (Rank #1 is highest).
+ * 3. Returns array Sorted Ascending (Lowest Rank Number first? No, Lowest Score first).
+ *    Goal: Countdown effect. Play #100, then #99... then #1.
+ *    So we need to sort such that the song with the lowest score (highest rank number) is first.
+ */
+export const getPresentationSongs = (singer: Singer): PresentationSong[] => {
+    const { allSongs } = enrichSingerData(singer);
+
+    // 1. Sort Descending to assign proper Ranks (#1 = Best)
+    const sortedByRank = [...allSongs].sort(sortSongsAlgorithm);
+
+    // 2. Map to add Rank property
+    const songsWithRank = sortedByRank.map((s, idx) => ({
+        ...s,
+        rank: idx + 1
+    }));
+
+    // 3. Reverse to get Ascending order (Worst -> Best) for the "Countdown" reveal
+    return songsWithRank.reverse();
 };

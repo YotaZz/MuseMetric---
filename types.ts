@@ -7,6 +7,7 @@ export interface Score {
 export interface Song {
   id: string;
   title: string;
+  comment?: string; // Max 20 chars
   scores: Score;
 }
 
@@ -24,7 +25,7 @@ export interface Singer {
   albums: Album[];
 }
 
-export type ViewMode = 'entry' | 'dashboard';
+export type ViewMode = 'entry' | 'dashboard' | 'presentation';
 
 // Helper types for analytics
 export interface SongWithStats extends Song {
